@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>The Active Switch Paradigm</title>
+    <title>The Active Switch Task</title>
     <script src="https://unpkg.com/jspsych@7.3.3"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
@@ -12,53 +12,49 @@
     <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
 
     <style>
-        body { background-color: #1a1a1a; color: white; user-select: none; overflow: hidden; }
+        /* Fondo oscuro estilo "Black Mirror" */
+        body { background-color: #0f172a; color: #e2e8f0; user-select: none; }
         
-        /* El "Rail" del Interruptor */
+        /* Contenedor del Interruptor */
         .switch-track {
             width: 600px;
             height: 80px;
-            background: #333;
+            background: #1e293b;
             border-radius: 40px;
             position: relative;
-            margin: 0 auto;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
-            border: 2px solid #555;
+            margin: 20px auto;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+            border: 2px solid #334155;
+            overflow: hidden; /* Mantiene todo dentro */
         }
 
-        /* La Manija que arrastras */
+        /* La Manija (Handle) */
         .switch-handle {
             width: 80px;
             height: 80px;
-            background: #e5e7eb; /* Gris claro */
+            background: #94a3b8;
             border-radius: 50%;
             position: absolute;
-            top: 0;
-            left: 0; /* Empieza a la izquierda */
+            top: -2px; /* Ajuste fino */
+            left: 0;
             cursor: grab;
-            box-shadow: 0 0 15px rgba(255,255,255,0.2);
-            transition: background 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            color: #333;
+            font-weight: 800;
+            color: #0f172a;
+            z-index: 10;
+            transition: background-color 0.2s;
         }
-        .switch-handle:active { cursor: grabbing; background: #fff; }
+        .switch-handle:active { cursor: grabbing; background: #f8fafc; }
 
-        /* Zonas de Decisión */
-        .zone-label { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
-        .zone-left { color: #ef4444; } /* Red */
-        .zone-right { color: #22c55e; } /* Green */
-        
-        /* Barra de Progreso (Tiempo) */
-        #progress-container { width: 600px; height: 10px; background: #333; margin: 20px auto; border-radius: 5px; overflow: hidden;}
-        #progress-bar { width: 100%; height: 100%; background: #3b82f6; transform-origin: left; transform: scaleX(1); transition: transform 0.1s linear; }
+        /* Barra de Progreso */
+        .timer-container { width: 600px; height: 6px; background: #334155; margin: 0 auto 40px auto; border-radius: 3px; }
+        .timer-bar { width: 100%; height: 100%; background: #3b82f6; transform-origin: left; transition: transform 0.1s linear; }
 
-        /* Estilos formulario */
-        .survey-box { background: white; color: black; padding: 20px; border-radius: 8px; max-width: 500px; margin: auto; text-align: left; }
-        .survey-box input, .survey-box select { border: 1px solid #ccc; padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; }
-        .survey-box label { display: block; margin-top: 15px; font-weight: bold; }
+        /* Labels */
+        .zone-text { font-size: 1.1rem; line-height: 1.2; }
     </style>
 </head>
 <body>
@@ -67,34 +63,34 @@
 
 <script>
 
-    // --- CONFIGURACIÓN CRÍTICA ---
+    // --- CONFIGURACIÓN ---
     const GOOGLE_SCRIPT_URL = "PEGA_AQUI_TU_URL_DE_GOOGLE_APPS_SCRIPT"; 
     const PROLIFIC_COMPLETION_URL = "https://app.prolific.co/submissions/complete?cc=YOUR_CODE";
-    // -----------------------------
+    // ---------------------
 
     const jsPsych = initJsPsych({
         display_element: 'jspsych-target'
     });
 
-    // Prolific ID Capture
     const subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID') || 'DEMO_' + Math.floor(Math.random()*100000);
     jsPsych.data.addProperties({ subject_id: subject_id });
 
     var timeline = [];
 
-    // -------------------------------------------------------------
-    // 1. DEMOGRÁFICOS (Ahora con estilo visual claro)
-    // -------------------------------------------------------------
+    // 1. DEMOGRAPHICS
+    // Usamos survey-html-form que es muy estable
     var demographics = {
         type: jsPsychSurveyHtmlForm,
-        preamble: '<h2 class="text-2xl font-bold mb-4 text-white">Participant Info</h2>',
+        preamble: '<h2 class="text-2xl font-bold mb-4 text-gray-800">Participant Info</h2>',
         html: `
-            <div class="survey-box">
-                <label>Age:
-                    <input type="number" name="age" required min="18" max="99">
+            <div class="text-left p-4 space-y-4">
+                <label class="block">
+                    <span class="text-gray-700 font-bold">Age:</span>
+                    <input type="number" name="age" required class="w-full p-2 border rounded text-black" min="18" max="99">
                 </label>
-                <label>Gender:
-                    <select name="gender" required>
+                <label class="block">
+                    <span class="text-gray-700 font-bold">Gender:</span>
+                    <select name="gender" required class="w-full p-2 border rounded text-black">
                         <option value="">Select...</option>
                         <option value="Female">Female</option>
                         <option value="Male">Male</option>
@@ -102,8 +98,9 @@
                         <option value="Other">Other</option>
                     </select>
                 </label>
-                <label>Dominant Hand (Mouse):
-                    <select name="handedness" required>
+                <label class="block">
+                    <span class="text-gray-700 font-bold">Dominant Hand (Mouse):</span>
+                    <select name="handedness" required class="w-full p-2 border rounded text-black">
                         <option value="">Select...</option>
                         <option value="Right">Right</option>
                         <option value="Left">Left</option>
@@ -111,272 +108,245 @@
                 </label>
             </div>
         `,
-        button_label: 'Continue to Experiment',
-        on_finish: function(data){
-            // Flatten responses for clean CSV
-            let responses = JSON.parse(data.responses);
-            jsPsych.data.addProperties(responses); 
-        }
+        // Importante: forzamos fondo blanco para este plugin específico para que se vea el texto negro
+        on_load: function() { document.body.style.backgroundColor = "#f3f4f6"; document.body.style.color = "#000"; },
+        on_finish: function() { document.body.style.backgroundColor = "#0f172a"; document.body.style.color = "#e2e8f0"; } // Reset al estilo oscuro
     };
     timeline.push(demographics);
 
-    // -------------------------------------------------------------
-    // 2. INSTRUCCIONES
-    // -------------------------------------------------------------
+    // 2. INSTRUCTIONS
     var instructions = {
         type: jsPsychHtmlButtonResponse,
         stimulus: `
-            <div class="max-w-2xl mx-auto mt-10 p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700">
-                <h1 class="text-3xl font-bold mb-4 text-blue-400">The Active Switch Task</h1>
-                <p class="mb-4 text-lg">You are the operator of a fail-safe mechanism.</p>
-                <ul class="list-disc text-left pl-8 space-y-2 mb-6 text-gray-300">
-                    <li>A slider will appear on screen. It controls an outcome.</li>
-                    <li>The slider has a powerful <b>spring</b>. It wants to stay on the LEFT.</li>
-                    <li>To choose the RIGHT option, you must <b>drag it and HOLD it</b> there against the resistance.</li>
-                    <li>If you let go, it will snap back instantly.</li>
-                    <li>You must maintain your choice until the timer runs out (5 seconds).</li>
+            <div class="max-w-2xl mx-auto mt-10 p-8 bg-slate-800 rounded-lg shadow-xl border border-slate-700 text-left">
+                <h1 class="text-3xl font-bold mb-6 text-blue-400">The Active Switch Task</h1>
+                <p class="mb-4 text-lg text-slate-200">This experiment measures <b>Moral Effort</b>.</p>
+                <ul class="list-disc pl-6 space-y-3 mb-8 text-slate-300">
+                    <li>You will control a slider mechanism.</li>
+                    <li>The slider has a default position (Left) and an active position (Right).</li>
+                    <li>To choose the Right option, you must <b>DRAG and HOLD</b> the slider against a strong spring.</li>
+                    <li>If you let go before the time runs out, it will snap back to the default choice.</li>
                 </ul>
-                <p class="text-yellow-400 font-bold">This task requires constant physical effort.</p>
+                <div class="text-center p-4 bg-slate-900 rounded border border-yellow-600 text-yellow-500 font-bold">
+                    This task requires constant physical tension on the mouse.
+                </div>
             </div>
         `,
         choices: ['I Understand - Start']
     };
     timeline.push(instructions);
 
-    // -------------------------------------------------------------
-    // 3. THE ACTIVE SWITCH PLUGIN (Custom Logic)
-    // -------------------------------------------------------------
-    
-    // Función generadora de ensayos
-    function createSwitchTrial(scenario_name, left_text, right_text) {
+    // 3. THE "ACTIVE SWITCH" TRIAL GENERATOR
+    // Esta función devuelve un objeto de trial configurado correctamente
+    function createSwitchTrial(scenario_title, left_label, right_label) {
         return {
-            type: jsPsychCallFunction,
-            async: true,
-            func: function(done) {
-                // Setup HTML
-                const display = document.getElementById('jspsych-target');
-                display.innerHTML = `
-                    <div class="flex flex-col items-center justify-center min-h-screen">
-                        <h2 class="text-3xl font-bold mb-10 text-gray-200">${scenario_name}</h2>
-
-                        <div id="progress-container"><div id="progress-bar"></div></div>
-                        <p class="text-sm text-gray-500 mb-10">Hold your choice until the bar empties</p>
-
-                        <div class="flex justify-between w-[800px] mb-2 px-10">
-                            <div class="zone-label zone-left w-1/3 text-left">${left_text}<br><span class="text-xs text-gray-500">(Default State)</span></div>
-                            <div class="zone-label zone-right w-1/3 text-right">${right_text}<br><span class="text-xs text-gray-500">(Requires Effort)</span></div>
+            type: jsPsychHtmlKeyboardResponse, // Usamos esto para pintar el HTML base
+            choices: "NO_KEYS", // El usuario no avanza con teclas, avanza por tiempo
+            stimulus: `
+                <div class="flex flex-col items-center justify-center pt-10">
+                    <h2 class="text-2xl font-bold mb-8 text-slate-200 uppercase tracking-widest">${scenario_title}</h2>
+                    
+                    <div class="timer-container"><div id="timer-bar" class="timer-bar"></div></div>
+                    
+                    <div class="flex justify-between w-[600px] mb-2 text-sm font-mono">
+                        <div class="w-1/2 text-left pr-4">
+                            <div class="text-red-400 font-bold mb-1">DEFAULT STATE</div>
+                            <div class="text-slate-400 zone-text">${left_label}</div>
                         </div>
-
-                        <div class="switch-track" id="track">
-                            <div class="switch-handle" id="handle">DRAG</div>
+                        <div class="w-1/2 text-right pl-4">
+                            <div class="text-emerald-400 font-bold mb-1">ACTIVE INTERVENTION</div>
+                            <div class="text-slate-400 zone-text">${right_label}</div>
                         </div>
                     </div>
-                `;
 
-                // --- LOGIC VARIABLES ---
+                    <div class="switch-track" id="track">
+                        <div class="switch-handle" id="handle">>>></div>
+                    </div>
+
+                    <p class="mt-8 text-slate-500 text-xs">Hold until bar is empty</p>
+                </div>
+            `,
+            // AQUÍ ES DONDE OCURRE LA MAGIA: on_load se ejecuta cuando el HTML ya existe
+            on_load: function() {
+                // Config
+                const DURATION = 5000; // 5 segundos
                 const track = document.getElementById('track');
                 const handle = document.getElementById('handle');
-                const progressBar = document.getElementById('progress-bar');
+                const timerBar = document.getElementById('timer-bar');
                 
-                const DURATION = 5000; // 5 seconds trial
-                const TRACK_WIDTH = 600;
-                const HANDLE_WIDTH = 80;
-                const MAX_X = TRACK_WIDTH - HANDLE_WIDTH;
-                
+                // Medidas
+                const trackWidth = 600;
+                const handleWidth = 80;
+                const maxDist = trackWidth - handleWidth;
+
+                // Estado
                 let isDragging = false;
-                let currentX = 0; // 0 = Left (Default), MAX_X = Right (Active)
+                let currentX = 0;
                 let startTime = performance.now();
-                let timeRemaining = DURATION;
+                let positionData = [];
+                let animFrameId;
+
+                // --- FÍSICA Y CONTROL ---
                 
-                // DATA RECORDING
-                let positionData = []; // Records position every frame
-                
-                // MOUSE EVENTS
-                function onMove(e) {
-                    if (!isDragging) return;
+                function updatePos(clientX) {
+                    if(!isDragging) return;
                     
-                    // Calculate X relative to track
                     const rect = track.getBoundingClientRect();
-                    let clientX = e.clientX || e.touches[0].clientX;
-                    let newX = clientX - rect.left - (HANDLE_WIDTH / 2);
-
-                    // Clamp values (Keep inside track)
-                    if (newX < 0) newX = 0;
-                    if (newX > MAX_X) newX = MAX_X;
-
-                    currentX = newX;
-                    updateVisuals();
+                    let x = clientX - rect.left - (handleWidth / 2);
+                    
+                    // Clamping (Límites)
+                    if(x < 0) x = 0;
+                    if(x > maxDist) x = maxDist;
+                    
+                    currentX = x;
+                    render();
                 }
 
-                function onDown(e) {
-                    isDragging = true;
-                    handle.textContent = "HOLD";
-                    handle.style.background = "white";
-                }
-
-                function onUp(e) {
-                    isDragging = false;
-                    handle.textContent = "DRAG";
-                    handle.style.background = "#e5e7eb";
-                    // SPRING PHYSICS: Snap back immediately if released
-                    currentX = 0; 
-                    updateVisuals();
-                }
-
-                // Attach Listeners
-                handle.addEventListener('mousedown', onDown);
-                window.addEventListener('mousemove', onMove);
-                window.addEventListener('mouseup', onUp);
-                // Touch support
-                handle.addEventListener('touchstart', onDown);
-                window.addEventListener('touchmove', onMove);
-                window.addEventListener('touchend', onUp);
-
-                function updateVisuals() {
+                function render() {
                     handle.style.left = currentX + 'px';
                     
-                    // Dynamic Background Color based on position
-                    // Left (0) is dark, Right (MAX) is slightly illuminted
-                    let intensity = (currentX / MAX_X) * 0.3;
-                    document.body.style.backgroundColor = `rgba(34, 197, 94, ${intensity})`; // Greenish tint if active
-                }
-
-                // MAIN LOOP
-                function loop() {
-                    let now = performance.now();
-                    let elapsed = now - startTime;
-                    timeRemaining = Math.max(0, DURATION - elapsed);
-
-                    // Update Progress Bar
-                    let pct = timeRemaining / DURATION;
-                    progressBar.style.transform = `scaleX(${pct})`;
-
-                    // Record Data (Where is the user?)
-                    // We normalize position: 0.0 (Left/Deont) to 1.0 (Right/Util)
-                    let normalizedPos = currentX / MAX_X;
-                    positionData.push({
-                        t: Math.round(elapsed),
-                        pos: parseFloat(normalizedPos.toFixed(3))
-                    });
-
-                    if (timeRemaining > 0) {
-                        requestAnimationFrame(loop);
+                    // Feedback visual: Si está cerca del final, brilla
+                    if(currentX > maxDist * 0.9) {
+                        handle.style.backgroundColor = '#22c55e'; // Verde
+                        handle.style.color = 'white';
+                        handle.innerText = "HOLD";
                     } else {
-                        finish();
+                        handle.style.backgroundColor = '#94a3b8'; // Gris
+                        handle.style.color = '#0f172a';
+                        handle.innerText = ">>>";
                     }
                 }
 
-                function finish() {
-                    // Cleanup
-                    window.removeEventListener('mousemove', onMove);
-                    window.removeEventListener('mouseup', onUp);
+                // Listeners (Ratón y Touch)
+                const startDrag = () => { isDragging = true; };
+                const endDrag = () => { 
+                    isDragging = false; 
+                    // SPRING EFFECT: Snap back instantáneo
+                    currentX = 0; 
+                    render();
+                };
+                const moveDrag = (e) => { updatePos(e.clientX || e.touches[0].clientX); };
+
+                handle.addEventListener('mousedown', startDrag);
+                window.addEventListener('mouseup', endDrag);
+                window.addEventListener('mousemove', moveDrag);
+                
+                // --- BUCLE PRINCIPAL ---
+                function loop() {
+                    let now = performance.now();
+                    let elapsed = now - startTime;
+                    let remaining = DURATION - elapsed;
+
+                    // Actualizar Timer
+                    let pct = Math.max(0, remaining / DURATION);
+                    timerBar.style.transform = `scaleX(${pct})`;
+
+                    // Guardar datos (Posición normalizada 0.0 a 1.0)
+                    positionData.push({
+                        t: Math.round(elapsed),
+                        p: parseFloat((currentX / maxDist).toFixed(3))
+                    });
+
+                    if (remaining > 0) {
+                        animFrameId = requestAnimationFrame(loop);
+                    } else {
+                        finishTrial();
+                    }
+                }
+
+                function finishTrial() {
+                    // Limpieza
+                    cancelAnimationFrame(animFrameId);
+                    window.removeEventListener('mouseup', endDrag);
+                    window.removeEventListener('mousemove', moveDrag);
+
+                    // Resultados
+                    // Calculamos "Esfuerzo Medio": Promedio de posición en el tiempo
+                    let sum = positionData.reduce((a, b) => a + b.p, 0);
+                    let avgEffort = sum / positionData.length;
                     
-                    // Determine Final Choice (Last Position)
-                    let finalScore = currentX / MAX_X;
-                    let outcome = finalScore > 0.5 ? 'Right (Active)' : 'Left (Default)';
+                    // Si el esfuerzo medio fue alto (> 0.5), consideramos que eligió la opción difícil
+                    let choice = avgEffort > 0.5 ? "Active_Right" : "Default_Left";
 
-                    // Calculate "Effort" (Area Under Curve)
-                    // How much time did they spend holding the difficult option?
-                    let effortSum = positionData.reduce((acc, p) => acc + p.pos, 0);
-                    let avgEffort = effortSum / positionData.length;
-
-                    // Save Data
                     let data = {
-                        scenario: scenario_name,
-                        outcome: outcome,
-                        avg_effort: avgEffort, // 0 = Never touched, 1 = Held perfectly whole time
-                        trajectory: JSON.stringify(positionData) // Temporal dynamics
+                        scenario: scenario_title,
+                        choice: choice,
+                        avg_effort: avgEffort,
+                        trajectory: JSON.stringify(positionData)
                     };
 
-                    // Reset styling
-                    document.body.style.backgroundColor = '#1a1a1a';
-                    
                     jsPsych.finishTrial(data);
                 }
 
-                // Start
+                // Iniciar
                 loop();
             }
         };
     }
 
-    // --- DEFINICIÓN DE ENSAYOS ---
-    
-    // Ensayo 1: Clásico Trolley (Modificado para ser de esfuerzo)
-    // Left (Default): Do Nothing -> 5 die.
-    // Right (Effort): Pull Switch -> 1 dies.
-    // Tienes que MANTENER el interruptor para matar al 1 y salvar a los 5.
+    // --- DEFINICIÓN DE DILEMAS ---
+
+    // Dilema 1: El Tranvía por Inercia
     timeline.push(createSwitchTrial(
-        "DILEMMA 1: The Runaway Train",
-        "DO NOTHING<br>5 People Die",
-        "HOLD SWITCH<br>Kill 1 to Save 5"
+        "The Runaway Train",
+        "DO NOTHING<br>Train kills 5 people",
+        "PULL & HOLD<br>Train kills 1 person"
     ));
 
-    // Ensayo 2: Inverso (Sacrificio propio)
-    // Left (Default): Keep Money.
-    // Right (Effort): Donate Everything.
+    // Dilema 2: Dinero vs Caridad
     timeline.push(createSwitchTrial(
-        "DILEMMA 2: The Bonus",
-        "KEEP IT<br>Gain $100",
-        "DONATE IT<br>Help Charity"
+        "The Donation",
+        "KEEP IT<br>Keep $100 bonus",
+        "DONATE IT<br>Give to charity"
     ));
-    
-    // Puedes añadir más aquí...
 
-    // -------------------------------------------------------------
-    // 4. GUARDADO ROBUSTO (FIRE AND FORGET)
-    // -------------------------------------------------------------
-    var save_data = {
-        type: jsPsychCallFunction,
-        async: true,
-        func: function(done){
-            // Show feedback
-            document.getElementById('jspsych-target').innerHTML = `
-                <div class="flex flex-col items-center justify-center h-screen">
-                    <h2 class="text-2xl font-bold mb-4">Saving Data...</h2>
-                    <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-            `;
-            
+    // 4. GUARDADO DE DATOS (Fail-Safe)
+    var save_screen = {
+        type: jsPsychHtmlKeyboardResponse,
+        choices: "NO_KEYS",
+        stimulus: `
+            <div class="text-center mt-20">
+                <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <h2 class="text-xl">Saving Data...</h2>
+            </div>
+        `,
+        on_load: function() {
             var data = jsPsych.data.get().json();
             
-            // 1. Send Data (Don't wait for response)
+            // Enviamos sin esperar respuesta (Fire & Forget)
             fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
-                mode: 'no-cors', // Crucial for stability
+                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: data
             });
 
-            // 2. Force Advance after 2 seconds no matter what
-            setTimeout(function(){
-                done();
+            // Forzamos avanzar tras 2 segundos (Aunque Google falle)
+            setTimeout(function() {
+                jsPsych.finishTrial();
             }, 2000);
         }
     };
-    timeline.push(save_data);
+    timeline.push(save_screen);
 
-    // -------------------------------------------------------------
-    // 5. FINAL
-    // -------------------------------------------------------------
+    // 5. FIN
     var end_screen = {
         type: jsPsychHtmlButtonResponse,
         stimulus: `
             <div class="p-10">
-                <h2 class="text-3xl text-green-400 mb-4">Success!</h2>
-                <p class="text-white mb-6">Your data has been sent.</p>
-                <p>You can now complete the submission on Prolific.</p>
+                <h2 class="text-3xl text-emerald-400 mb-4">Experiment Completed</h2>
+                <p class="mb-6">Thank you for your participation.</p>
             </div>
         `,
-        choices: ['Redirect to Prolific'],
+        choices: ['Return to Prolific'],
         on_finish: function() {
             window.location = PROLIFIC_COMPLETION_URL;
         }
     };
     timeline.push(end_screen);
 
-    // INICIAR
     jsPsych.run(timeline);
 
 </script>
 </html>
+
