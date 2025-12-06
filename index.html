@@ -6,11 +6,13 @@
     <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-call-function@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3"></script> 
+    
     <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        body { background-color: #f3f4f6; overflow: hidden; user-select: none; }
+        body { background-color: #f3f4f6; user-select: none; }
         #arena-container { 
             position: relative; 
             width: 800px; 
@@ -19,8 +21,10 @@
             background: white; 
             border-radius: 12px; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
-            cursor: none; /* Hide default system cursor inside the arena */
+            cursor: none; 
         }
+        /* Fix for form inputs showing correctly */
+        input, select { border: 1px solid #ccc; padding: 4px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -30,7 +34,7 @@
 <script>
 
     // -----------------------------------------------------------
-    // CONFIGURATION (PASTE YOUR GOOGLE SCRIPT URL BELOW)
+    // CONFIGURATION
     // -----------------------------------------------------------
     const GOOGLE_SCRIPT_URL = "PASTE_YOUR_GOOGLE_WEB_APP_URL_HERE"; 
     const PROLIFIC_COMPLETION_URL = "https://app.prolific.co/submissions/complete?cc=YOUR_CODE";
@@ -40,13 +44,50 @@
         display_element: 'jspsych-target'
     });
 
-    // Automatically capture Prolific IDs
+    // Capture Prolific IDs
     const subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID') || 'TEST_' + Math.floor(Math.random()*10000);
     jsPsych.data.addProperties({ subject_id: subject_id });
 
     var timeline = [];
 
-    // 1. Instructions
+    // --- 1. DEMOGRAPHICS (New) ---
+    var demographics = {
+        type: jsPsychSurveyHtmlForm,
+        preamble: '<h3 class="text-xl font-bold mb-4">Demographic Information</h3>',
+        html: `
+            <div class="text-left bg-white p-6 rounded shadow max-w-md mx-auto space-y-4">
+                <label class="block">
+                    <span class="text-gray-700">Age:</span>
+                    <input name="age" type="number" required class="mt-1 block w-full" min="18" max="99">
+                </label>
+                
+                <label class="block">
+                    <span class="text-gray-700">Gender Identity:</span>
+                    <select name="gender" required class="mt-1 block w-full">
+                        <option value="">Select...</option>
+                        <option value="female">Female</option>
+                        <option value="male">Male</option>
+                        <option value="non-binary">Non-binary</option>
+                        <option value="prefer_not_to_say">Prefer not to say</option>
+                        <option value="other">Other</option>
+                    </select>
+                </label>
+
+                <label class="block">
+                    <span class="text-gray-700">Handedness (for mouse use):</span>
+                    <select name="handedness" required class="mt-1 block w-full">
+                        <option value="">Select...</option>
+                        <option value="right">Right</option>
+                        <option value="left">Left</option>
+                    </select>
+                </label>
+            </div>
+        `,
+        button_label: 'Continue'
+    };
+    timeline.push(demographics);
+
+    // --- 2. INSTRUCTIONS ---
     var instructions = {
         type: jsPsychHtmlButtonResponse,
         stimulus: `
@@ -68,7 +109,7 @@
     };
     timeline.push(instructions);
 
-    // 2. THE PHYSICS ENGINE (V2 - MORAL TETHER)
+    // --- 3. PHYSICS ENGINE (V2) ---
     var physics_trial = {
         type: jsPsychCallFunction,
         async: true,
@@ -87,13 +128,12 @@
             const canvas = document.getElementById('moralCanvas');
             const ctx = canvas.getContext('2d');
             
-            // --- EXPERIMENTAL VARIABLES ---
-            // High Friction = Loose spring + Heavy mass (requires sustained effort)
+            // Experimental Variables
             const condition = Math.random() > 0.5 ? 'high_friction' : 'low_friction';
             const springStiffness = condition === 'high_friction' ? 0.03 : 0.15; 
             const friction = 0.85; 
 
-            // Initial State
+            // State
             let startX = 400, startY = 500;
             let mouse = { x: startX, y: startY }; 
             let agent = { x: startX, y: startY, vx: 0, vy: 0 };
@@ -106,7 +146,6 @@
             const targetSelf = { x: 150, y: 150, r: 70, label: "KEEP ($10)", color: "#ef4444" }; 
             const targetShare = { x: 650, y: 150, r: 70, label: "SHARE ($5/$5)", color: "#22c55e" }; 
 
-            // Mouse Listener
             function updateMouse(e) {
                 const rect = canvas.getBoundingClientRect();
                 mouse.x = e.clientX - rect.left;
@@ -115,28 +154,25 @@
             }
             document.addEventListener('mousemove', updateMouse);
 
-            // Physics Loop
             function loop() {
                 if (!trialRunning) return;
 
-                // Hooke's Law (Spring Physics)
+                // Physics (Hooke's Law)
                 let dx = mouse.x - agent.x;
                 let dy = mouse.y - agent.y;
                 let ax = dx * springStiffness;
                 let ay = dy * springStiffness;
 
-                // Velocity + Friction
                 agent.vx = (agent.vx + ax) * friction;
                 agent.vy = (agent.vy + ay) * friction;
                 agent.x += agent.vx;
                 agent.y += agent.vy;
 
-                // Record Data (60Hz)
                 if (isInteract) {
                     trajectory.push({
                         t: Math.round(performance.now() - startTime),
-                        ax: Math.round(agent.x), ay: Math.round(agent.y), // Actual Action
-                        mx: Math.round(mouse.x), my: Math.round(mouse.y)  // Intention (Mouse)
+                        ax: Math.round(agent.x), ay: Math.round(agent.y),
+                        mx: Math.round(mouse.x), my: Math.round(mouse.y)
                     });
                 }
 
@@ -145,20 +181,16 @@
                 requestAnimationFrame(loop);
             }
 
-            // Visual Rendering
             function render() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Draw Targets
                 drawTarget(targetSelf);
                 drawTarget(targetShare);
 
-                // Draw "The Moral Tether"
+                // Tether
                 ctx.beginPath();
                 ctx.moveTo(agent.x, agent.y);
                 ctx.lineTo(mouse.x, mouse.y);
                 let dist = Math.hypot(mouse.x - agent.x, mouse.y - agent.y);
-                // Color changes based on tension (strain)
                 let tensionColor = dist > 200 ? "rgba(255,0,0,0.6)" : "rgba(0,0,0,0.2)";
                 ctx.strokeStyle = tensionColor;
                 ctx.lineWidth = 3;
@@ -166,13 +198,12 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Draw Agent (The Weight)
+                // Agent & Mouse
                 ctx.beginPath();
                 ctx.arc(agent.x, agent.y, 20, 0, Math.PI * 2);
                 ctx.fillStyle = "#2563eb"; 
                 ctx.fill();
 
-                // Draw Mouse (Your Hand)
                 ctx.beginPath();
                 ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2);
                 ctx.strokeStyle = "#ef4444"; 
@@ -204,7 +235,6 @@
                 trialRunning = false; 
                 document.removeEventListener('mousemove', updateMouse);
 
-                // Visual Feedback on completion
                 const ctx = document.getElementById('moralCanvas').getContext('2d');
                 ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
                 ctx.fillRect(0, 0, 800, 600);
@@ -212,7 +242,6 @@
                 ctx.font = "30px sans-serif";
                 ctx.fillText("Choice Recorded: " + outcome.toUpperCase(), 400, 300);
 
-                // Calculate Moral Tension Metric
                 let avg_tension = trajectory.length > 0 ? 
                     trajectory.reduce((acc, p) => acc + Math.hypot(p.mx-p.ax, p.my-p.ay), 0) / trajectory.length : 0;
 
@@ -224,56 +253,68 @@
                     trajectory: JSON.stringify(trajectory) 
                 };
 
-                setTimeout(() => { jsPsych.finishTrial(data); }, 1000);
+                setTimeout(() => { jsPsych.finishTrial(data); }, 800);
             }
 
             loop();
         }
     };
 
-    // Repeat the trial 5 times
     var loop_trials = {
         timeline: [physics_trial],
         loop_function: function() {
             var trials_run = jsPsych.data.get().filter({trial_type: 'call-function'}).count();
-            return trials_run < 5; // Change this number to increase/decrease trials
+            // --- REDUCED TO 3 TRIALS FOR TESTING (Increase for real study) ---
+            return trials_run < 3; 
         }
     };
     timeline.push(loop_trials);
 
-    // 3. Save Data
+    // --- 4. ROBUST DATA SAVING (The Fix) ---
     var save_data = {
         type: jsPsychCallFunction,
         async: true,
         func: function(done){
-            // Loading Screen
-            document.getElementById('jspsych-target').innerHTML = '<h2 class="p-10 text-center">Saving data... please wait.</h2>';
+            document.getElementById('jspsych-target').innerHTML = 
+                '<div class="text-center mt-20"><h2 class="text-xl">Saving data...</h2><p class="text-gray-500 text-sm">Do not close the window.</p></div>';
             
             var data_to_save = jsPsych.data.get().json();
             
+            // FAIL-SAFE: If Google doesn't respond in 4 seconds, force proceed
+            var safetyTimer = setTimeout(() => {
+                console.log("Saving timed out (safe proceed)");
+                done(); 
+            }, 4000);
+
+            // Attempt to save
             fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
+                mode: 'no-cors', // IMPORTANT: This helps avoid some CORS blocks, though it makes response opaque
+                headers: {
+                    'Content-Type': 'application/json',
+                },
                 body: data_to_save
             })
-            .then(response => response.json())
-            .then(data => {
-                console.log("Saved:", data);
+            .then(() => {
+                clearTimeout(safetyTimer); // Cancel the safety timer if successful
+                console.log("Save request sent");
                 done();
             })
             .catch(error => {
-                console.error("Error:", error);
-                // Proceed even if error to avoid trapping participant
-                done();
+                console.error("Save error:", error);
+                // Proceed anyway so we don't trap the user
+                clearTimeout(safetyTimer);
+                done(); 
             });
         }
     };
     timeline.push(save_data);
 
-    // 4. Final Screen
+    // --- 5. END SCREEN ---
     var end_screen = {
         type: jsPsychHtmlButtonResponse,
-        stimulus: "<h3>Experiment Completed!</h3><p>Your data has been securely recorded.</p>",
-        choices: ['Finish and return to Prolific'],
+        stimulus: "<h3>Experiment Completed!</h3><p>Thank you for your time.</p>",
+        choices: ['Click here to complete on Prolific'],
         on_finish: function() {
             window.location = PROLIFIC_COMPLETION_URL;
         }
