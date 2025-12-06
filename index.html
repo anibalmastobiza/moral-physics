@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>The Moral Kinematics Task</title>
+    <script src="https://unpkg.com/jspsych@7.3.3"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-call-function@1.1.2"></script>
+    <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body { background-color: #f3f4f6; overflow: hidden; }
+        #arena-container { position: relative; width: 800px; height: 600px; margin: 20px auto; background: white; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); cursor: none; }
+        /* Hide default cursor inside arena */
+        .instruction-text { max-width: 800px; margin: auto; padding-top: 50px; }
+    </style>
+</head>
+<body>
+    <div id="jspsych-target"></div>
+</body>
+<script>
+
+    // --- CONFIGURATION ---
+    const GOOGLE_SCRIPT_URL = "PASTE_YOUR_GOOGLE_WEB_APP_URL_HERE"; 
+    const PROLIFIC_COMPLETION_URL = "https://app.prolific.co/submissions/complete?cc=YOUR_CODE";
+
+    // Initialize jsPsych
+    const jsPsych = initJsPsych({
+        display_element: 'jspsych-target',
+        on_finish: function() {
+            // Optional: Show data at end for debugging
+            // jsPsych.data.displayData(); 
+        }
+    });
+
+    // Capture Prolific IDs
+    const subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID') || 'TEST_USER_' + Date.now();
+    const study_id = jsPsych.data.getURLVariable('STUDY_ID');
+    const session_id = jsPsych.data.getURLVariable('SESSION_ID');
+
+    jsPsych.data.addProperties({
+        subject_id: subject_id,
+        study_id: study_id,
+        session_id: session_id
+    });
+
+    // --- TIMELINE ---
+    var timeline = [];
+
+    // 1. Instructions
+    var instructions = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+            <div class="instruction-text">
+                <h2 class="text-2xl font-bold mb-4">Welcome to the Social Physics Task</h2>
+                <p class="mb-4">In this experiment, you will interact with another agent.</p>
+                <p class="mb-4">Your goal is to move your blue circle to one of two zones:</p>
+                <ul class="list-disc text-left mx-auto w-1/2 mb-4">
+                    <li><b>Top-Left (Self):</b> You gain 10 points. The other gets 0.</li>
+                    <li><b>Top-Right (Share):</b> You gain 5 points. The other gets 5.</li>
+                </ul>
+                <p class="mb-4"><b>Note:</b> Sometimes the environment will feel "heavy" or "viscous".</p>
+                <p class="font-bold text-red-500">Please maximize your window.</p>
+            </div>
+        `,
+        choices: ['Start Experiment']
+    };
+    timeline.push(instructions);
+
+    // --- CUSTOM PHYSICS TRIAL PLUGIN ---
+    // We create a custom trial function to handle the canvas physics
+    
+    var physics_trial = {
+        type: jsPsychCallFunction,
+        async: true,
+        func: function(done) {
+            // Setup the Arena
+            const display = document.getElementById('jspsych-target');
+            display.innerHTML = `
+                <div id="arena-container">
+                    <canvas id="moralCanvas" width="800" height="600"></canvas>
+                    <div id="ui-overlay" class="absolute top-4 w-full text-center text-gray-500 font-mono">Move the Blue Dot</div>
+                </div>
+            `;
+
+            const canvas = document.getElementById('moralCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Experimental Variables (Randomized for this demo)
+            const condition = Math.random() > 0.5 ? 'high_friction' : 'low_friction';
+            const moral_dilemma = 'share_vs_keep';
+            
+            // Physics State
+            let mouseX = 400, mouseY = 550; // Start position
+            let agentX = 400, agentY = 550;
+            let trajectory = [];
+            let isDragging = false;
+            let startTime = performance.now();
+            let trialOver = false;
+
+            // Targets
+            const targetLeft = { x: 150, y: 100, r: 60, label: "KEEP (Self)", color: "#ef4444" }; // Red
+            const targetRight = { x: 650, y: 100, r: 60, label: "SHARE (Public)", color: "#22c55e" }; // Green
+
+            // Physics Constants
+            // INNOVATION: This is where we define 'Moral Viscosity'
+            // If condition is high_friction, the 'lerp' (linear interpolation) factor is lower, causing lag.
+            let frictionFactor = condition === 'high_friction' ? 0.04 : 0.25; 
+
+            // Event Listener for Hardware Mouse
+            function updateMouse(e) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.clientX - rect.left;
+                mouseY = e.clientY - rect.top;
+                
+                // Start tracking on first movement
+                if (!isDragging) isDragging = true;
+            }
+            canvas.addEventListener('mousemove', updateMouse);
+
+            // The Game Loop (60fps)
+            function loop() {
+                if (trialOver) return;
+
+                // 1. Physics Calculation (The "Embodied" part)
+                // The agent moves towards the mouse, but is slowed by friction
+                let dx = mouseX - agentX;
+                let dy = mouseY - agentY;
+                
+                // Apply Friction Logic specifically when moving UP (towards decision)
+                // We simulate that being moral is "heavier" in the high friction condition
+                let currentFriction = frictionFactor;
+                
+                // Update Agent Position
+                agentX += dx * currentFriction;
+                agentY += dy * currentFriction;
+
+                // 2. Record Data (Kinematics)
+                trajectory.push({
+                    t: Math.round(performance.now() - startTime),
+                    x: Math.round(agentX),
+                    y: Math.round(agentY),
+                    mx: Math.round(mouseX), // Hardware mouse pos (to calculate effort/drag)
+                    my: Math.round(mouseY)
+                });
+
+                // 3. Rendering
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw Targets
+                drawTarget(targetLeft);
+                drawTarget(targetRight);
+
+                // Draw Agent (The Self)
+                ctx.beginPath();
+                ctx.arc(agentX, agentY, 15, 0, Math.PI * 2);
+                ctx.fillStyle = "#3b82f6"; // Blue
+                ctx.fill();
+                
+                // Visual Feedback of "The Cord" (Elasticity between mouse and agent)
+                ctx.beginPath();
+                ctx.moveTo(agentX, agentY);
+                ctx.lineTo(mouseX, mouseY);
+                ctx.strokeStyle = "rgba(0,0,0,0.1)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 4. Collision Detection (Decision made)
+                checkCollision(targetLeft, 'selfish');
+                checkCollision(targetRight, 'altruistic');
+
+                requestAnimationFrame(loop);
+            }
+
+            function drawTarget(t) {
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+                ctx.fillStyle = t.color + "33"; // Transparent
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = t.color;
+                ctx.stroke();
+                ctx.fillStyle = "#000";
+                ctx.font = "14px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(t.label, t.x, t.y + 5);
+            }
+
+            function checkCollision(target, choice) {
+                let dist = Math.hypot(agentX - target.x, agentY - target.y);
+                if (dist < target.r / 2) {
+                    endTrial(choice);
+                }
+            }
+
+            function endTrial(choice) {
+                if (trialOver) return;
+                trialOver = true;
+                
+                // Save Data
+                let data = {
+                    condition: condition,
+                    choice: choice,
+                    rt: performance.now() - startTime,
+                    // We save the full trajectory for Python analysis later (AUC, x-flips)
+                    trajectory: trajectory 
+                };
+                
+                jsPsych.data.write(data);
+                
+                // Clear UI
+                canvas.removeEventListener('mousemove', updateMouse);
+                
+                // Wait 500ms then proceed
+                setTimeout(() => {
+                    done(); // Helper to finish jsPsychCallFunction
+                }, 500);
+            }
+
+            // Start Loop
+            loop();
+        }
+    };
+
+    // Repeat the trial 5 times for this demo
+    var trials_loop = {
+        timeline: [physics_trial],
+        loop_function: function(data){
+            // In a real study, use a fixed list of trials
+            var trials_run = jsPsych.data.get().filter({trial_type: 'call-function'}).count();
+            return trials_run < 5; 
+        }
+    };
+    timeline.push(trials_loop);
+
+    // --- SAVING DATA ---
+    var save_data = {
+        type: jsPsychCallFunction,
+        async: true,
+        func: function(done){
+            var data_to_save = jsPsych.data.get().json(); // Get all data as JSON string
+            
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                body: data_to_save
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Data saved:", data);
+                done();
+            })
+            .catch(error => {
+                console.error("Error saving:", error);
+                done(); // Proceed anyway to not trap the user
+            });
+        }
+    };
+    timeline.push(save_data);
+
+    // --- FINAL SCREEN ---
+    var final_screen = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: "<h3>Thank you!</h3><p>Data saved. Redirecting to Prolific...</p>",
+        choices: ['Finish'],
+        on_finish: function() {
+            window.location = PROLIFIC_COMPLETION_URL;
+        }
+    };
+    timeline.push(final_screen);
+
+    // Run
+    jsPsych.run(timeline);
+
+</script>
+</html>
