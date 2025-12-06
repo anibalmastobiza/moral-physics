@@ -1,28 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>The Moral Kinematics Task</title>
+    <title>The Active Switch Paradigm</title>
     <script src="https://unpkg.com/jspsych@7.3.3"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3"></script>
     <script src="https://unpkg.com/@jspsych/plugin-call-function@1.1.2"></script>
-    <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3"></script> 
-    <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
 
     <style>
-        body { background-color: #f3f4f6; user-select: none; overflow: hidden; }
-        #arena-container { 
-            position: relative; 
-            width: 800px; 
-            height: 600px; 
-            margin: 20px auto; 
-            background: white; 
-            border-radius: 12px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
-            cursor: none; /* Hide cursor inside arena */
+        body { background-color: #1a1a1a; color: white; user-select: none; overflow: hidden; }
+        
+        /* El "Rail" del Interruptor */
+        .switch-track {
+            width: 600px;
+            height: 80px;
+            background: #333;
+            border-radius: 40px;
+            position: relative;
+            margin: 0 auto;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+            border: 2px solid #555;
         }
-        input, select { border: 1px solid #ccc; padding: 4px; border-radius: 4px; }
+
+        /* La Manija que arrastras */
+        .switch-handle {
+            width: 80px;
+            height: 80px;
+            background: #e5e7eb; /* Gris claro */
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0; /* Empieza a la izquierda */
+            cursor: grab;
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #333;
+        }
+        .switch-handle:active { cursor: grabbing; background: #fff; }
+
+        /* Zonas de Decisión */
+        .zone-label { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .zone-left { color: #ef4444; } /* Red */
+        .zone-right { color: #22c55e; } /* Green */
+        
+        /* Barra de Progreso (Tiempo) */
+        #progress-container { width: 600px; height: 10px; background: #333; margin: 20px auto; border-radius: 5px; overflow: hidden;}
+        #progress-bar { width: 100%; height: 100%; background: #3b82f6; transform-origin: left; transform: scaleX(1); transition: transform 0.1s linear; }
+
+        /* Estilos formulario */
+        .survey-box { background: white; color: black; padding: 20px; border-radius: 8px; max-width: 500px; margin: auto; text-align: left; }
+        .survey-box input, .survey-box select { border: 1px solid #ccc; padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; }
+        .survey-box label { display: block; margin-top: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -31,302 +67,315 @@
 
 <script>
 
-    // -----------------------------------------------------------
-    // CONFIGURATION
-    // -----------------------------------------------------------
-    const GOOGLE_SCRIPT_URL = "PASTE_YOUR_GOOGLE_WEB_APP_URL_HERE"; 
+    // --- CONFIGURACIÓN CRÍTICA ---
+    const GOOGLE_SCRIPT_URL = "PEGA_AQUI_TU_URL_DE_GOOGLE_APPS_SCRIPT"; 
     const PROLIFIC_COMPLETION_URL = "https://app.prolific.co/submissions/complete?cc=YOUR_CODE";
-    // -----------------------------------------------------------
+    // -----------------------------
 
     const jsPsych = initJsPsych({
         display_element: 'jspsych-target'
     });
 
-    const subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID') || 'TEST_' + Math.floor(Math.random()*10000);
+    // Prolific ID Capture
+    const subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID') || 'DEMO_' + Math.floor(Math.random()*100000);
     jsPsych.data.addProperties({ subject_id: subject_id });
 
     var timeline = [];
 
-    // --- 1. INSTRUCTIONS ---
-    var instructions = {
-        type: jsPsychHtmlButtonResponse,
-        stimulus: `
-            <div class="p-8 max-w-2xl mx-auto">
-                <h2 class="text-3xl font-bold mb-6 text-gray-800">The Moral Kinematics Task</h2>
-                <div class="bg-white p-6 rounded shadow mb-6 text-left">
-                    <p class="mb-4">You are about to interact with a physical object.</p>
-                    <ul class="list-disc pl-5 mb-4 space-y-2">
-                        <li><b>Goal:</b> Drag the Blue Circle to one of the choices.</li>
-                        <li><b>The Red Line:</b> Represents your intention.</li>
-                        <li><b>IMPORTANT:</b> To start each trial, you must move your mouse to the <span class="text-gray-500 font-bold">Gray Center Circle</span>.</li>
-                    </ul>
-                </div>
-            </div>
-        `,
-        choices: ['Start']
-    };
-    timeline.push(instructions);
-
-    // --- 2. PHYSICS ENGINE V3 (With "Start Zone" fix) ---
-    var physics_trial = {
-        type: jsPsychCallFunction,
-        async: true,
-        func: function(done) {
-            const display = document.getElementById('jspsych-target');
-            display.innerHTML = `
-                <div id="arena-container">
-                    <canvas id="moralCanvas" width="800" height="600"></canvas>
-                    <div id="msg-overlay" class="absolute top-4 w-full text-center pointer-events-none select-none">
-                        <span class="text-xl font-bold text-gray-400">Move mouse to center to start</span>
-                    </div>
-                </div>
-            `;
-
-            const canvas = document.getElementById('moralCanvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Experimental Vars
-            const condition = Math.random() > 0.5 ? 'high_friction' : 'low_friction';
-            const springStiffness = condition === 'high_friction' ? 0.03 : 0.15; 
-            const friction = 0.85; 
-
-            // State
-            let startX = 400, startY = 500; // Agent starts bottom-center
-            let centerZone = { x: 400, y: 300, r: 50 }; // Where user must go to start
-            
-            let mouse = { x: 400, y: 300 }; 
-            let agent = { x: startX, y: startY, vx: 0, vy: 0 };
-            
-            let trajectory = [];
-            let isInteract = false;
-            let trialRunning = true;
-            let hasStarted = false; // "Start Zone" flag
-            let startTime = 0;
-
-            const targetSelf = { x: 150, y: 150, r: 70, label: "KEEP ($10)", color: "#ef4444" }; 
-            const targetShare = { x: 650, y: 150, r: 70, label: "SHARE ($5/$5)", color: "#22c55e" }; 
-
-            function updateMouse(e) {
-                const rect = canvas.getBoundingClientRect();
-                mouse.x = e.clientX - rect.left;
-                mouse.y = e.clientY - rect.top;
-            }
-            document.addEventListener('mousemove', updateMouse);
-
-            function loop() {
-                if (!trialRunning) return;
-
-                // LOGIC: Check if user has entered the "Start Zone"
-                if (!hasStarted) {
-                    let distToCenter = Math.hypot(mouse.x - centerZone.x, mouse.y - centerZone.y);
-                    if (distToCenter < centerZone.r) {
-                        hasStarted = true;
-                        startTime = performance.now();
-                        isInteract = true;
-                        document.getElementById('msg-overlay').innerHTML = '<span class="text-xl font-bold text-gray-700">GO!</span>';
-                    }
-                }
-
-                // PHYSICS (Only runs after start)
-                if (hasStarted) {
-                    let dx = mouse.x - agent.x;
-                    let dy = mouse.y - agent.y;
-                    let ax = dx * springStiffness;
-                    let ay = dy * springStiffness;
-
-                    agent.vx = (agent.vx + ax) * friction;
-                    agent.vy = (agent.vy + ay) * friction;
-                    agent.x += agent.vx;
-                    agent.y += agent.vy;
-
-                    trajectory.push({
-                        t: Math.round(performance.now() - startTime),
-                        ax: Math.round(agent.x), ay: Math.round(agent.y),
-                        mx: Math.round(mouse.x), my: Math.round(mouse.y)
-                    });
-                }
-
-                render();
-                
-                if (hasStarted) checkWin();
-                
-                requestAnimationFrame(loop);
-            }
-
-            function render() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                // Draw Targets
-                drawTarget(targetSelf);
-                drawTarget(targetShare);
-
-                // Draw START ZONE (if not started)
-                if (!hasStarted) {
-                    ctx.beginPath();
-                    ctx.arc(centerZone.x, centerZone.y, centerZone.r, 0, Math.PI * 2);
-                    ctx.fillStyle = "#e5e7eb"; // Gray
-                    ctx.fill();
-                    ctx.strokeStyle = "#9ca3af";
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                    ctx.fillStyle = "#6b7280";
-                    ctx.font = "bold 14px sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.fillText("START HERE", centerZone.x, centerZone.y + 5);
-                }
-
-                // Draw Tether (Only if started)
-                if (hasStarted) {
-                    ctx.beginPath();
-                    ctx.moveTo(agent.x, agent.y);
-                    ctx.lineTo(mouse.x, mouse.y);
-                    let dist = Math.hypot(mouse.x - agent.x, mouse.y - agent.y);
-                    let tensionColor = dist > 200 ? "rgba(255,0,0,0.6)" : "rgba(0,0,0,0.2)";
-                    ctx.strokeStyle = tensionColor;
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([5, 5]); 
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
-
-                // Draw Agent
-                ctx.beginPath();
-                ctx.arc(agent.x, agent.y, 20, 0, Math.PI * 2);
-                ctx.fillStyle = hasStarted ? "#2563eb" : "#9ca3af"; // Blue if active, Gray if waiting
-                ctx.fill();
-
-                // Draw Mouse
-                ctx.beginPath();
-                ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2);
-                ctx.strokeStyle = "#ef4444"; 
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
-
-            function drawTarget(t) {
-                ctx.beginPath();
-                ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
-                ctx.fillStyle = t.color + "22"; 
-                ctx.fill();
-                ctx.strokeStyle = t.color;
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = "#333";
-                ctx.font = "bold 14px sans-serif";
-                ctx.textAlign = "center";
-                ctx.fillText(t.label, t.x, t.y);
-            }
-
-            function checkWin() {
-                if (Math.hypot(agent.x - targetSelf.x, agent.y - targetSelf.y) < 30) finishTrial('selfish');
-                else if (Math.hypot(agent.x - targetShare.x, agent.y - targetShare.y) < 30) finishTrial('altruistic');
-            }
-
-            function finishTrial(outcome) {
-                if (!trialRunning) return;
-                trialRunning = false; 
-                document.removeEventListener('mousemove', updateMouse);
-
-                const ctx = document.getElementById('moralCanvas').getContext('2d');
-                ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-                ctx.fillRect(0, 0, 800, 600);
-                ctx.fillStyle = "black";
-                ctx.font = "30px sans-serif";
-                ctx.fillText("Recorded: " + outcome.toUpperCase(), 400, 300);
-
-                // Calculate metrics
-                let avg_tension = trajectory.length > 0 ? 
-                    trajectory.reduce((acc, p) => acc + Math.hypot(p.mx-p.ax, p.my-p.ay), 0) / trajectory.length : 0;
-
-                var data = {
-                    condition: condition,
-                    outcome: outcome,
-                    rt: performance.now() - startTime,
-                    avg_moral_tension: avg_tension, 
-                    trajectory: JSON.stringify(trajectory) 
-                };
-
-                setTimeout(() => { jsPsych.finishTrial(data); }, 800);
-            }
-
-            loop();
-        }
-    };
-
-    var loop_trials = {
-        timeline: [physics_trial],
-        loop_function: function() {
-            var trials_run = jsPsych.data.get().filter({trial_type: 'call-function'}).count();
-            return trials_run < 3; // 3 Trials for testing
-        }
-    };
-    timeline.push(loop_trials);
-
-    // --- 3. DEMOGRAPHICS ---
+    // -------------------------------------------------------------
+    // 1. DEMOGRÁFICOS (Ahora con estilo visual claro)
+    // -------------------------------------------------------------
     var demographics = {
         type: jsPsychSurveyHtmlForm,
-        preamble: '<h3 class="text-xl font-bold mb-4">Demographics</h3>',
+        preamble: '<h2 class="text-2xl font-bold mb-4 text-white">Participant Info</h2>',
         html: `
-            <div class="text-left bg-white p-6 rounded shadow max-w-md mx-auto space-y-4">
-                <label class="block">
-                    <span class="text-gray-700">Age:</span>
-                    <input name="age" type="number" required class="mt-1 block w-full" min="18" max="99">
+            <div class="survey-box">
+                <label>Age:
+                    <input type="number" name="age" required min="18" max="99">
                 </label>
-                <label class="block">
-                    <span class="text-gray-700">Gender:</span>
-                    <select name="gender" required class="mt-1 block w-full">
+                <label>Gender:
+                    <select name="gender" required>
                         <option value="">Select...</option>
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                        <option value="non-binary">Non-binary</option>
-                        <option value="other">Other</option>
+                        <option value="Female">Female</option>
+                        <option value="Male">Male</option>
+                        <option value="Non-binary">Non-binary</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </label>
+                <label>Dominant Hand (Mouse):
+                    <select name="handedness" required>
+                        <option value="">Select...</option>
+                        <option value="Right">Right</option>
+                        <option value="Left">Left</option>
                     </select>
                 </label>
             </div>
         `,
-        button_label: 'Continue'
+        button_label: 'Continue to Experiment',
+        on_finish: function(data){
+            // Flatten responses for clean CSV
+            let responses = JSON.parse(data.responses);
+            jsPsych.data.addProperties(responses); 
+        }
     };
     timeline.push(demographics);
 
-    // --- 4. DATA SAVING (FAIL-SAFE VERSION) ---
-    // This trial will last exactly 3000ms. It sends data in background.
-    // It does NOT wait for success. It just moves on.
-    var save_data = {
-        type: jsPsychHtmlKeyboardResponse,
+    // -------------------------------------------------------------
+    // 2. INSTRUCCIONES
+    // -------------------------------------------------------------
+    var instructions = {
+        type: jsPsychHtmlButtonResponse,
         stimulus: `
-            <div class="text-center mt-20">
-                <h2 class="text-2xl font-bold text-gray-800">Saving Data...</h2>
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mt-4"></div>
-                <p class="text-gray-500 mt-4">Please wait a moment.</p>
+            <div class="max-w-2xl mx-auto mt-10 p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+                <h1 class="text-3xl font-bold mb-4 text-blue-400">The Active Switch Task</h1>
+                <p class="mb-4 text-lg">You are the operator of a fail-safe mechanism.</p>
+                <ul class="list-disc text-left pl-8 space-y-2 mb-6 text-gray-300">
+                    <li>A slider will appear on screen. It controls an outcome.</li>
+                    <li>The slider has a powerful <b>spring</b>. It wants to stay on the LEFT.</li>
+                    <li>To choose the RIGHT option, you must <b>drag it and HOLD it</b> there against the resistance.</li>
+                    <li>If you let go, it will snap back instantly.</li>
+                    <li>You must maintain your choice until the timer runs out (5 seconds).</li>
+                </ul>
+                <p class="text-yellow-400 font-bold">This task requires constant physical effort.</p>
             </div>
         `,
-        choices: "NO_KEYS",
-        trial_duration: 3000, // Force advance after 3 seconds
-        on_load: function() {
-            var data_to_save = jsPsych.data.get().json();
+        choices: ['I Understand - Start']
+    };
+    timeline.push(instructions);
+
+    // -------------------------------------------------------------
+    // 3. THE ACTIVE SWITCH PLUGIN (Custom Logic)
+    // -------------------------------------------------------------
+    
+    // Función generadora de ensayos
+    function createSwitchTrial(scenario_name, left_text, right_text) {
+        return {
+            type: jsPsychCallFunction,
+            async: true,
+            func: function(done) {
+                // Setup HTML
+                const display = document.getElementById('jspsych-target');
+                display.innerHTML = `
+                    <div class="flex flex-col items-center justify-center min-h-screen">
+                        <h2 class="text-3xl font-bold mb-10 text-gray-200">${scenario_name}</h2>
+
+                        <div id="progress-container"><div id="progress-bar"></div></div>
+                        <p class="text-sm text-gray-500 mb-10">Hold your choice until the bar empties</p>
+
+                        <div class="flex justify-between w-[800px] mb-2 px-10">
+                            <div class="zone-label zone-left w-1/3 text-left">${left_text}<br><span class="text-xs text-gray-500">(Default State)</span></div>
+                            <div class="zone-label zone-right w-1/3 text-right">${right_text}<br><span class="text-xs text-gray-500">(Requires Effort)</span></div>
+                        </div>
+
+                        <div class="switch-track" id="track">
+                            <div class="switch-handle" id="handle">DRAG</div>
+                        </div>
+                    </div>
+                `;
+
+                // --- LOGIC VARIABLES ---
+                const track = document.getElementById('track');
+                const handle = document.getElementById('handle');
+                const progressBar = document.getElementById('progress-bar');
+                
+                const DURATION = 5000; // 5 seconds trial
+                const TRACK_WIDTH = 600;
+                const HANDLE_WIDTH = 80;
+                const MAX_X = TRACK_WIDTH - HANDLE_WIDTH;
+                
+                let isDragging = false;
+                let currentX = 0; // 0 = Left (Default), MAX_X = Right (Active)
+                let startTime = performance.now();
+                let timeRemaining = DURATION;
+                
+                // DATA RECORDING
+                let positionData = []; // Records position every frame
+                
+                // MOUSE EVENTS
+                function onMove(e) {
+                    if (!isDragging) return;
+                    
+                    // Calculate X relative to track
+                    const rect = track.getBoundingClientRect();
+                    let clientX = e.clientX || e.touches[0].clientX;
+                    let newX = clientX - rect.left - (HANDLE_WIDTH / 2);
+
+                    // Clamp values (Keep inside track)
+                    if (newX < 0) newX = 0;
+                    if (newX > MAX_X) newX = MAX_X;
+
+                    currentX = newX;
+                    updateVisuals();
+                }
+
+                function onDown(e) {
+                    isDragging = true;
+                    handle.textContent = "HOLD";
+                    handle.style.background = "white";
+                }
+
+                function onUp(e) {
+                    isDragging = false;
+                    handle.textContent = "DRAG";
+                    handle.style.background = "#e5e7eb";
+                    // SPRING PHYSICS: Snap back immediately if released
+                    currentX = 0; 
+                    updateVisuals();
+                }
+
+                // Attach Listeners
+                handle.addEventListener('mousedown', onDown);
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+                // Touch support
+                handle.addEventListener('touchstart', onDown);
+                window.addEventListener('touchmove', onMove);
+                window.addEventListener('touchend', onUp);
+
+                function updateVisuals() {
+                    handle.style.left = currentX + 'px';
+                    
+                    // Dynamic Background Color based on position
+                    // Left (0) is dark, Right (MAX) is slightly illuminted
+                    let intensity = (currentX / MAX_X) * 0.3;
+                    document.body.style.backgroundColor = `rgba(34, 197, 94, ${intensity})`; // Greenish tint if active
+                }
+
+                // MAIN LOOP
+                function loop() {
+                    let now = performance.now();
+                    let elapsed = now - startTime;
+                    timeRemaining = Math.max(0, DURATION - elapsed);
+
+                    // Update Progress Bar
+                    let pct = timeRemaining / DURATION;
+                    progressBar.style.transform = `scaleX(${pct})`;
+
+                    // Record Data (Where is the user?)
+                    // We normalize position: 0.0 (Left/Deont) to 1.0 (Right/Util)
+                    let normalizedPos = currentX / MAX_X;
+                    positionData.push({
+                        t: Math.round(elapsed),
+                        pos: parseFloat(normalizedPos.toFixed(3))
+                    });
+
+                    if (timeRemaining > 0) {
+                        requestAnimationFrame(loop);
+                    } else {
+                        finish();
+                    }
+                }
+
+                function finish() {
+                    // Cleanup
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    
+                    // Determine Final Choice (Last Position)
+                    let finalScore = currentX / MAX_X;
+                    let outcome = finalScore > 0.5 ? 'Right (Active)' : 'Left (Default)';
+
+                    // Calculate "Effort" (Area Under Curve)
+                    // How much time did they spend holding the difficult option?
+                    let effortSum = positionData.reduce((acc, p) => acc + p.pos, 0);
+                    let avgEffort = effortSum / positionData.length;
+
+                    // Save Data
+                    let data = {
+                        scenario: scenario_name,
+                        outcome: outcome,
+                        avg_effort: avgEffort, // 0 = Never touched, 1 = Held perfectly whole time
+                        trajectory: JSON.stringify(positionData) // Temporal dynamics
+                    };
+
+                    // Reset styling
+                    document.body.style.backgroundColor = '#1a1a1a';
+                    
+                    jsPsych.finishTrial(data);
+                }
+
+                // Start
+                loop();
+            }
+        };
+    }
+
+    // --- DEFINICIÓN DE ENSAYOS ---
+    
+    // Ensayo 1: Clásico Trolley (Modificado para ser de esfuerzo)
+    // Left (Default): Do Nothing -> 5 die.
+    // Right (Effort): Pull Switch -> 1 dies.
+    // Tienes que MANTENER el interruptor para matar al 1 y salvar a los 5.
+    timeline.push(createSwitchTrial(
+        "DILEMMA 1: The Runaway Train",
+        "DO NOTHING<br>5 People Die",
+        "HOLD SWITCH<br>Kill 1 to Save 5"
+    ));
+
+    // Ensayo 2: Inverso (Sacrificio propio)
+    // Left (Default): Keep Money.
+    // Right (Effort): Donate Everything.
+    timeline.push(createSwitchTrial(
+        "DILEMMA 2: The Bonus",
+        "KEEP IT<br>Gain $100",
+        "DONATE IT<br>Help Charity"
+    ));
+    
+    // Puedes añadir más aquí...
+
+    // -------------------------------------------------------------
+    // 4. GUARDADO ROBUSTO (FIRE AND FORGET)
+    // -------------------------------------------------------------
+    var save_data = {
+        type: jsPsychCallFunction,
+        async: true,
+        func: function(done){
+            // Show feedback
+            document.getElementById('jspsych-target').innerHTML = `
+                <div class="flex flex-col items-center justify-center h-screen">
+                    <h2 class="text-2xl font-bold mb-4">Saving Data...</h2>
+                    <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+            `;
             
-            // "Fire and Forget" fetch
+            var data = jsPsych.data.get().json();
+            
+            // 1. Send Data (Don't wait for response)
             fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
-                mode: 'no-cors',
+                mode: 'no-cors', // Crucial for stability
                 headers: { 'Content-Type': 'application/json' },
-                body: data_to_save
+                body: data
             });
+
+            // 2. Force Advance after 2 seconds no matter what
+            setTimeout(function(){
+                done();
+            }, 2000);
         }
     };
     timeline.push(save_data);
 
-    // --- 5. END SCREEN ---
+    // -------------------------------------------------------------
+    // 5. FINAL
+    // -------------------------------------------------------------
     var end_screen = {
         type: jsPsychHtmlButtonResponse,
-        stimulus: "<h3>Experiment Completed!</h3><p>Thank you.</p>",
-        choices: ['Click to finish'],
+        stimulus: `
+            <div class="p-10">
+                <h2 class="text-3xl text-green-400 mb-4">Success!</h2>
+                <p class="text-white mb-6">Your data has been sent.</p>
+                <p>You can now complete the submission on Prolific.</p>
+            </div>
+        `,
+        choices: ['Redirect to Prolific'],
         on_finish: function() {
             window.location = PROLIFIC_COMPLETION_URL;
         }
     };
     timeline.push(end_screen);
 
+    // INICIAR
     jsPsych.run(timeline);
 
 </script>
