@@ -7,12 +7,11 @@
     <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-call-function@1.1.2"></script>
     <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.0.3"></script> 
-    
     <link href="https://unpkg.com/jspsych@7.3.3/css/jspsych.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        body { background-color: #f3f4f6; user-select: none; }
+        body { background-color: #f3f4f6; user-select: none; overflow: hidden; }
         #arena-container { 
             position: relative; 
             width: 800px; 
@@ -21,9 +20,8 @@
             background: white; 
             border-radius: 12px; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
-            cursor: none; 
+            cursor: none; /* Hide cursor inside arena */
         }
-        /* Fix for form inputs showing correctly */
         input, select { border: 1px solid #ccc; padding: 4px; border-radius: 4px; }
     </style>
 </head>
@@ -44,50 +42,12 @@
         display_element: 'jspsych-target'
     });
 
-    // Capture Prolific IDs
     const subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID') || 'TEST_' + Math.floor(Math.random()*10000);
     jsPsych.data.addProperties({ subject_id: subject_id });
 
     var timeline = [];
 
-    // --- 1. DEMOGRAPHICS (New) ---
-    var demographics = {
-        type: jsPsychSurveyHtmlForm,
-        preamble: '<h3 class="text-xl font-bold mb-4">Demographic Information</h3>',
-        html: `
-            <div class="text-left bg-white p-6 rounded shadow max-w-md mx-auto space-y-4">
-                <label class="block">
-                    <span class="text-gray-700">Age:</span>
-                    <input name="age" type="number" required class="mt-1 block w-full" min="18" max="99">
-                </label>
-                
-                <label class="block">
-                    <span class="text-gray-700">Gender Identity:</span>
-                    <select name="gender" required class="mt-1 block w-full">
-                        <option value="">Select...</option>
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                        <option value="non-binary">Non-binary</option>
-                        <option value="prefer_not_to_say">Prefer not to say</option>
-                        <option value="other">Other</option>
-                    </select>
-                </label>
-
-                <label class="block">
-                    <span class="text-gray-700">Handedness (for mouse use):</span>
-                    <select name="handedness" required class="mt-1 block w-full">
-                        <option value="">Select...</option>
-                        <option value="right">Right</option>
-                        <option value="left">Left</option>
-                    </select>
-                </label>
-            </div>
-        `,
-        button_label: 'Continue'
-    };
-    timeline.push(demographics);
-
-    // --- 2. INSTRUCTIONS ---
+    // --- 1. INSTRUCTIONS ---
     var instructions = {
         type: jsPsychHtmlButtonResponse,
         stimulus: `
@@ -96,31 +56,28 @@
                 <div class="bg-white p-6 rounded shadow mb-6 text-left">
                     <p class="mb-4">You are about to interact with a physical object.</p>
                     <ul class="list-disc pl-5 mb-4 space-y-2">
-                        <li>Your goal is to drag the <b>Blue Circle</b> (the Action) to one of the two zones.</li>
-                        <li>You will see a <span class="text-red-500 font-bold">red line</span> connecting your mouse to the circle.</li>
-                        <li>This line represents your <b>Intention</b>. The tension of the line represents your <b>Effort</b>.</li>
-                        <li><b>Note:</b> In some trials, the environment will feel "heavy" or "viscous". This is intentional.</li>
+                        <li><b>Goal:</b> Drag the Blue Circle to one of the choices.</li>
+                        <li><b>The Red Line:</b> Represents your intention.</li>
+                        <li><b>IMPORTANT:</b> To start each trial, you must move your mouse to the <span class="text-gray-500 font-bold">Gray Center Circle</span>.</li>
                     </ul>
                 </div>
-                <p class="text-sm text-gray-500">Please maximize your browser window.</p>
             </div>
         `,
-        choices: ['Start Experiment']
+        choices: ['Start']
     };
     timeline.push(instructions);
 
-    // --- 3. PHYSICS ENGINE (V2) ---
+    // --- 2. PHYSICS ENGINE V3 (With "Start Zone" fix) ---
     var physics_trial = {
         type: jsPsychCallFunction,
         async: true,
         func: function(done) {
-            // Setup Canvas
             const display = document.getElementById('jspsych-target');
             display.innerHTML = `
                 <div id="arena-container">
                     <canvas id="moralCanvas" width="800" height="600"></canvas>
-                    <div class="absolute top-4 w-full text-center pointer-events-none select-none">
-                        <span class="text-xl font-bold text-gray-400">Drag the weight towards your decision</span>
+                    <div id="msg-overlay" class="absolute top-4 w-full text-center pointer-events-none select-none">
+                        <span class="text-xl font-bold text-gray-400">Move mouse to center to start</span>
                     </div>
                 </div>
             `;
@@ -128,21 +85,24 @@
             const canvas = document.getElementById('moralCanvas');
             const ctx = canvas.getContext('2d');
             
-            // Experimental Variables
+            // Experimental Vars
             const condition = Math.random() > 0.5 ? 'high_friction' : 'low_friction';
             const springStiffness = condition === 'high_friction' ? 0.03 : 0.15; 
             const friction = 0.85; 
 
             // State
-            let startX = 400, startY = 500;
-            let mouse = { x: startX, y: startY }; 
+            let startX = 400, startY = 500; // Agent starts bottom-center
+            let centerZone = { x: 400, y: 300, r: 50 }; // Where user must go to start
+            
+            let mouse = { x: 400, y: 300 }; 
             let agent = { x: startX, y: startY, vx: 0, vy: 0 };
+            
             let trajectory = [];
             let isInteract = false;
             let trialRunning = true;
-            let startTime = performance.now();
+            let hasStarted = false; // "Start Zone" flag
+            let startTime = 0;
 
-            // Targets
             const targetSelf = { x: 150, y: 150, r: 70, label: "KEEP ($10)", color: "#ef4444" }; 
             const targetShare = { x: 650, y: 150, r: 70, label: "SHARE ($5/$5)", color: "#22c55e" }; 
 
@@ -150,25 +110,35 @@
                 const rect = canvas.getBoundingClientRect();
                 mouse.x = e.clientX - rect.left;
                 mouse.y = e.clientY - rect.top;
-                if(!isInteract) isInteract = true;
             }
             document.addEventListener('mousemove', updateMouse);
 
             function loop() {
                 if (!trialRunning) return;
 
-                // Physics (Hooke's Law)
-                let dx = mouse.x - agent.x;
-                let dy = mouse.y - agent.y;
-                let ax = dx * springStiffness;
-                let ay = dy * springStiffness;
+                // LOGIC: Check if user has entered the "Start Zone"
+                if (!hasStarted) {
+                    let distToCenter = Math.hypot(mouse.x - centerZone.x, mouse.y - centerZone.y);
+                    if (distToCenter < centerZone.r) {
+                        hasStarted = true;
+                        startTime = performance.now();
+                        isInteract = true;
+                        document.getElementById('msg-overlay').innerHTML = '<span class="text-xl font-bold text-gray-700">GO!</span>';
+                    }
+                }
 
-                agent.vx = (agent.vx + ax) * friction;
-                agent.vy = (agent.vy + ay) * friction;
-                agent.x += agent.vx;
-                agent.y += agent.vy;
+                // PHYSICS (Only runs after start)
+                if (hasStarted) {
+                    let dx = mouse.x - agent.x;
+                    let dy = mouse.y - agent.y;
+                    let ax = dx * springStiffness;
+                    let ay = dy * springStiffness;
 
-                if (isInteract) {
+                    agent.vx = (agent.vx + ax) * friction;
+                    agent.vy = (agent.vy + ay) * friction;
+                    agent.x += agent.vx;
+                    agent.y += agent.vy;
+
                     trajectory.push({
                         t: Math.round(performance.now() - startTime),
                         ax: Math.round(agent.x), ay: Math.round(agent.y),
@@ -177,33 +147,55 @@
                 }
 
                 render();
-                checkWin();
+                
+                if (hasStarted) checkWin();
+                
                 requestAnimationFrame(loop);
             }
 
             function render() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw Targets
                 drawTarget(targetSelf);
                 drawTarget(targetShare);
 
-                // Tether
-                ctx.beginPath();
-                ctx.moveTo(agent.x, agent.y);
-                ctx.lineTo(mouse.x, mouse.y);
-                let dist = Math.hypot(mouse.x - agent.x, mouse.y - agent.y);
-                let tensionColor = dist > 200 ? "rgba(255,0,0,0.6)" : "rgba(0,0,0,0.2)";
-                ctx.strokeStyle = tensionColor;
-                ctx.lineWidth = 3;
-                ctx.setLineDash([5, 5]); 
-                ctx.stroke();
-                ctx.setLineDash([]);
+                // Draw START ZONE (if not started)
+                if (!hasStarted) {
+                    ctx.beginPath();
+                    ctx.arc(centerZone.x, centerZone.y, centerZone.r, 0, Math.PI * 2);
+                    ctx.fillStyle = "#e5e7eb"; // Gray
+                    ctx.fill();
+                    ctx.strokeStyle = "#9ca3af";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = "#6b7280";
+                    ctx.font = "bold 14px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText("START HERE", centerZone.x, centerZone.y + 5);
+                }
 
-                // Agent & Mouse
+                // Draw Tether (Only if started)
+                if (hasStarted) {
+                    ctx.beginPath();
+                    ctx.moveTo(agent.x, agent.y);
+                    ctx.lineTo(mouse.x, mouse.y);
+                    let dist = Math.hypot(mouse.x - agent.x, mouse.y - agent.y);
+                    let tensionColor = dist > 200 ? "rgba(255,0,0,0.6)" : "rgba(0,0,0,0.2)";
+                    ctx.strokeStyle = tensionColor;
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 5]); 
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Draw Agent
                 ctx.beginPath();
                 ctx.arc(agent.x, agent.y, 20, 0, Math.PI * 2);
-                ctx.fillStyle = "#2563eb"; 
+                ctx.fillStyle = hasStarted ? "#2563eb" : "#9ca3af"; // Blue if active, Gray if waiting
                 ctx.fill();
 
+                // Draw Mouse
                 ctx.beginPath();
                 ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2);
                 ctx.strokeStyle = "#ef4444"; 
@@ -240,8 +232,9 @@
                 ctx.fillRect(0, 0, 800, 600);
                 ctx.fillStyle = "black";
                 ctx.font = "30px sans-serif";
-                ctx.fillText("Choice Recorded: " + outcome.toUpperCase(), 400, 300);
+                ctx.fillText("Recorded: " + outcome.toUpperCase(), 400, 300);
 
+                // Calculate metrics
                 let avg_tension = trajectory.length > 0 ? 
                     trajectory.reduce((acc, p) => acc + Math.hypot(p.mx-p.ax, p.my-p.ay), 0) / trajectory.length : 0;
 
@@ -264,47 +257,60 @@
         timeline: [physics_trial],
         loop_function: function() {
             var trials_run = jsPsych.data.get().filter({trial_type: 'call-function'}).count();
-            // --- REDUCED TO 3 TRIALS FOR TESTING (Increase for real study) ---
-            return trials_run < 3; 
+            return trials_run < 3; // 3 Trials for testing
         }
     };
     timeline.push(loop_trials);
 
-    // --- 4. ROBUST DATA SAVING (The Fix) ---
+    // --- 3. DEMOGRAPHICS ---
+    var demographics = {
+        type: jsPsychSurveyHtmlForm,
+        preamble: '<h3 class="text-xl font-bold mb-4">Demographics</h3>',
+        html: `
+            <div class="text-left bg-white p-6 rounded shadow max-w-md mx-auto space-y-4">
+                <label class="block">
+                    <span class="text-gray-700">Age:</span>
+                    <input name="age" type="number" required class="mt-1 block w-full" min="18" max="99">
+                </label>
+                <label class="block">
+                    <span class="text-gray-700">Gender:</span>
+                    <select name="gender" required class="mt-1 block w-full">
+                        <option value="">Select...</option>
+                        <option value="female">Female</option>
+                        <option value="male">Male</option>
+                        <option value="non-binary">Non-binary</option>
+                        <option value="other">Other</option>
+                    </select>
+                </label>
+            </div>
+        `,
+        button_label: 'Continue'
+    };
+    timeline.push(demographics);
+
+    // --- 4. DATA SAVING (FAIL-SAFE VERSION) ---
+    // This trial will last exactly 3000ms. It sends data in background.
+    // It does NOT wait for success. It just moves on.
     var save_data = {
-        type: jsPsychCallFunction,
-        async: true,
-        func: function(done){
-            document.getElementById('jspsych-target').innerHTML = 
-                '<div class="text-center mt-20"><h2 class="text-xl">Saving data...</h2><p class="text-gray-500 text-sm">Do not close the window.</p></div>';
-            
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: `
+            <div class="text-center mt-20">
+                <h2 class="text-2xl font-bold text-gray-800">Saving Data...</h2>
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mt-4"></div>
+                <p class="text-gray-500 mt-4">Please wait a moment.</p>
+            </div>
+        `,
+        choices: "NO_KEYS",
+        trial_duration: 3000, // Force advance after 3 seconds
+        on_load: function() {
             var data_to_save = jsPsych.data.get().json();
             
-            // FAIL-SAFE: If Google doesn't respond in 4 seconds, force proceed
-            var safetyTimer = setTimeout(() => {
-                console.log("Saving timed out (safe proceed)");
-                done(); 
-            }, 4000);
-
-            // Attempt to save
+            // "Fire and Forget" fetch
             fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
-                mode: 'no-cors', // IMPORTANT: This helps avoid some CORS blocks, though it makes response opaque
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
                 body: data_to_save
-            })
-            .then(() => {
-                clearTimeout(safetyTimer); // Cancel the safety timer if successful
-                console.log("Save request sent");
-                done();
-            })
-            .catch(error => {
-                console.error("Save error:", error);
-                // Proceed anyway so we don't trap the user
-                clearTimeout(safetyTimer);
-                done(); 
             });
         }
     };
@@ -313,8 +319,8 @@
     // --- 5. END SCREEN ---
     var end_screen = {
         type: jsPsychHtmlButtonResponse,
-        stimulus: "<h3>Experiment Completed!</h3><p>Thank you for your time.</p>",
-        choices: ['Click here to complete on Prolific'],
+        stimulus: "<h3>Experiment Completed!</h3><p>Thank you.</p>",
+        choices: ['Click to finish'],
         on_finish: function() {
             window.location = PROLIFIC_COMPLETION_URL;
         }
